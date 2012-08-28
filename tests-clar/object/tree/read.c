@@ -9,12 +9,12 @@ static git_repository *g_repo;
 // Fixture setup and teardown
 void test_object_tree_read__initialize(void)
 {
-   g_repo = cl_git_sandbox_init("testrepo");
+   g_repo = cl_git_sandbox_init_cached("testrepo");
 }
 
 void test_object_tree_read__cleanup(void)
 {
-   cl_git_sandbox_cleanup();
+   cl_git_sandbox_cleanup_cached();
 }
 
 

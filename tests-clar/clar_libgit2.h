@@ -54,4 +54,8 @@ int cl_setenv(const char *name, const char *value);
 git_repository *cl_git_sandbox_init(const char *sandbox);
 void cl_git_sandbox_cleanup(void);
 
+/* Experimental: in-memory cached sandboxes */
+git_repository *cl_git_sandbox_init_cached(const char *sandbox);
+void cl_git_sandbox_cleanup_cached(void);
+
 #endif
