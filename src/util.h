@@ -127,15 +127,36 @@ GIT_INLINE(const char *) git__next_line(const char *s)
 	return s;
 }
 
+GIT_INLINE(const void *) git__memrchr(const void *s, int c, size_t n)
+{
+	const unsigned char *cp;
+
+	if (n != 0) {
+		cp = (unsigned char *)s + n;
+		do {
+			if (*(--cp) == (unsigned char)c)
+				return cp;
+		} while (--n != 0);
+	}
+
+	return NULL;
+}
+
 typedef int (*git__tsort_cmp)(const void *a, const void *b);
 
 extern void git__tsort(void **dst, size_t size, git__tsort_cmp cmp);
 
-typedef int (*git__tsort_r_cmp)(const void *a, const void *b, void *payload);
+typedef int (*git__sort_r_cmp)(const void *a, const void *b, void *payload);
 
 extern void git__tsort_r(
-	void **dst, size_t size, git__tsort_r_cmp cmp, void *payload);
+	void **dst, size_t size, git__sort_r_cmp cmp, void *payload);
 
+extern void git__qsort_r(
+	void *els, size_t nel, size_t elsize, git__sort_r_cmp cmp, void *payload);
+
+extern void git__insertsort_r(
+	void *els, size_t nel, size_t elsize, void *swapel,
+	git__sort_r_cmp cmp, void *payload);
 
 /**
  * @param position If non-NULL, this will be set to the position where the

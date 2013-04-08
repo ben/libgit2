@@ -10,6 +10,7 @@
 #include "common.h"
 #include "buffer.h"
 #include "tree.h"
+#include "refdb.h"
 
 #include "git2.h"
 
@@ -510,8 +511,8 @@ static int walk_and_search(git_object **out, git_revwalk *walk, regex_t *regex)
 	
 	while (!(error = git_revwalk_next(&oid, walk))) {
 
-		if ((error = git_object_lookup(&obj, git_revwalk_repository(walk), &oid, GIT_OBJ_COMMIT) < 0) &&
-			(error != GIT_ENOTFOUND))
+		error = git_object_lookup(&obj, git_revwalk_repository(walk), &oid, GIT_OBJ_COMMIT);
+		if ((error < 0) && (error != GIT_ENOTFOUND))
 			return -1;
 
 		if (!regexec(regex, git_commit_message((git_commit*)obj), 0, NULL, 0)) {
@@ -634,7 +635,7 @@ static int extract_how_many(int *n, const char *spec, size_t *pos)
 		} while (spec[(*pos)] == kind && kind == '~');
 
 		if (git__isdigit(spec[*pos])) {
-			if ((git__strtol32(&parsed, spec + *pos, &end_ptr, 10) < 0) < 0)
+			if (git__strtol32(&parsed, spec + *pos, &end_ptr, 10) < 0)
 				return GIT_EINVALIDSPEC;
 
 			accumulated += (parsed - 1);
@@ -656,7 +657,7 @@ static int object_from_reference(git_object **object, git_reference *reference)
 	if (git_reference_resolve(&resolved, reference) < 0)
 		return -1;
 
-	error = git_object_lookup(object, reference->owner, git_reference_target(resolved), GIT_OBJ_ANY);
+	error = git_object_lookup(object, reference->db->repo, git_reference_target(resolved), GIT_OBJ_ANY);
 	git_reference_free(resolved);
 
 	return error;
@@ -864,5 +865,30 @@ cleanup:
 	}
 	git_reference_free(reference);
 	git_buf_free(&buf);
+	return error;
+}
+
+int git_revparse_rangelike(git_object **left, git_object **right, int *threedots, git_repository *repo, const char *rangelike)
+{
+	int error = 0;
+	const char *p, *q;
+	char *revspec;
+
+	p = strstr(rangelike, "..");
+	if (!p) {
+		giterr_set(GITERR_INVALID, "Malformed range (or rangelike syntax): %s", rangelike);
+		return GIT_EINVALIDSPEC;
+	} else if (p[2] == '.') {
+		*threedots = 1;
+		q = p + 3;
+	} else {
+		*threedots = 0;
+		q = p + 2;
+	}
+
+	revspec = git__substrdup(rangelike, p - rangelike);
+	error = (git_revparse_single(left, repo, revspec)
+	      || git_revparse_single(right, repo, q));
+	git__free(revspec);
 	return error;
 }

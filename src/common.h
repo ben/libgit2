@@ -29,18 +29,19 @@
 # include "win32/msvc-compat.h"
 # include "win32/mingw-compat.h"
 # include "win32/error.h"
+# include "win32/version.h"
 # ifdef GIT_THREADS
 #	include "win32/pthread.h"
-#endif
-
-# define snprintf _snprintf
+# endif
 
 #else
-# include <unistd.h>
 
+# include <unistd.h>
 # ifdef GIT_THREADS
 #	include <pthread.h>
 # endif
+#define GIT_STDLIB_CALL
+
 #endif
 
 #include "git2/types.h"
@@ -54,6 +55,12 @@
  * Check a pointer allocation result, returning -1 if it failed.
  */
 #define GITERR_CHECK_ALLOC(ptr) if (ptr == NULL) { return -1; }
+
+/**
+ * Check a return value and propogate result if non-zero.
+ */
+#define GITERR_CHECK_ERROR(code) \
+	do { int _err = (code); if (_err < 0) return _err; } while (0)
 
 /**
  * Set the error message for this thread, formatting as needed.

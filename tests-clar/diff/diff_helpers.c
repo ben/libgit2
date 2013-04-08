@@ -32,7 +32,7 @@ int diff_file_cb(
 
 	e->files++;
 
-	if (delta->binary)
+	if ((delta->flags & GIT_DIFF_FLAG_BINARY) != 0)
 		e->files_binary++;
 
 	cl_assert(delta->status <= GIT_DELTA_TYPECHANGE);
@@ -40,6 +40,16 @@ int diff_file_cb(
 	e->file_status[delta->status] += 1;
 
 	return 0;
+}
+
+int diff_print_file_cb(
+	const git_diff_delta *delta,
+	float progress,
+	void *payload)
+{
+	fprintf(stderr, "%c %s\n",
+		git_diff_status_char(delta->status), delta->old_file.path);
+	return diff_file_cb(delta, progress, payload);
 }
 
 int diff_hunk_cb(
@@ -126,7 +136,8 @@ int diff_foreach_via_iterator(
 
 		/* if there are no changes, then the patch will be NULL */
 		if (!patch) {
-			cl_assert(delta->status == GIT_DELTA_UNMODIFIED || delta->binary == 1);
+			cl_assert(delta->status == GIT_DELTA_UNMODIFIED ||
+					  (delta->flags & GIT_DIFF_FLAG_BINARY) != 0);
 			continue;
 		}
 

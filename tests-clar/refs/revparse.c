@@ -32,6 +32,33 @@ static void test_object(const char *spec, const char *expected_oid)
 	test_object_inrepo(spec, expected_oid, g_repo);
 }
 
+static void test_rangelike(const char *rangelike,
+						   const char *expected_left,
+						   const char *expected_right,
+						   int expected_threedots)
+{
+	char objstr[64] = {0};
+	git_object *left = NULL, *right = NULL;
+	int threedots;
+	int error;
+
+	error = git_revparse_rangelike(&left, &right, &threedots, g_repo, rangelike);
+
+	if (expected_left != NULL) {
+		cl_assert_equal_i(0, error);
+		cl_assert_equal_i(threedots, expected_threedots);
+		git_oid_fmt(objstr, git_object_id(left));
+		cl_assert_equal_s(objstr, expected_left);
+		git_oid_fmt(objstr, git_object_id(right));
+		cl_assert_equal_s(objstr, expected_right);
+	} else
+		cl_assert(error != 0);
+
+	git_object_free(left);
+	git_object_free(right);
+}
+
+
 void test_refs_revparse__initialize(void)
 {
 	cl_git_pass(git_repository_open(&g_repo, cl_fixture("testrepo.git")));
@@ -227,7 +254,7 @@ void test_refs_revparse__previous_head(void)
 
 static void create_fake_stash_reference_and_reflog(git_repository *repo)
 {
-	git_reference *master;
+	git_reference *master, *new_master;
 	git_buf log_path = GIT_BUF_INIT;
 
 	git_buf_joinpath(&log_path, git_repository_path(repo), "logs/refs/fakestash");
@@ -235,12 +262,13 @@ static void create_fake_stash_reference_and_reflog(git_repository *repo)
 	cl_assert_equal_i(false, git_path_isfile(git_buf_cstr(&log_path)));
 
 	cl_git_pass(git_reference_lookup(&master, repo, "refs/heads/master"));
-	cl_git_pass(git_reference_rename(master, "refs/fakestash", 0));
+	cl_git_pass(git_reference_rename(&new_master, master, "refs/fakestash", 0));
+	git_reference_free(master);
 
 	cl_assert_equal_i(true, git_path_isfile(git_buf_cstr(&log_path)));
 
 	git_buf_free(&log_path);
-	git_reference_free(master);
+	git_reference_free(new_master);
 }
 
 void test_refs_revparse__reflog_of_a_ref_under_refs(void)
@@ -594,4 +622,20 @@ void test_refs_revparse__try_to_retrieve_branch_before_abbrev_sha(void)
 	git_reference_free(branch);
 	git_object_free(target);
 	cl_git_sandbox_cleanup();
+}
+
+
+void test_refs_revparse__range(void)
+{
+	test_rangelike("be3563a^1..be3563a",
+	               "9fd738e8f7967c078dceed8190330fc8648ee56a",
+	               "be3563ae3f795b2b4353bcce3a527ad0a4f7f644",
+	               0);
+
+	test_rangelike("be3563a^1...be3563a",
+	               "9fd738e8f7967c078dceed8190330fc8648ee56a",
+	               "be3563ae3f795b2b4353bcce3a527ad0a4f7f644",
+	               1);
+
+	test_rangelike("be3563a^1.be3563a", NULL, NULL, 0);
 }

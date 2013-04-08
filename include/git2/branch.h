@@ -38,10 +38,8 @@ GIT_BEGIN_DECL
  * validated for consistency. It should also not conflict with
  * an already existing branch name.
  *
- * @param target Object to which this branch should point. This object
- * must belong to the given `repo` and can either be a git_commit or a
- * git_tag. When a git_tag is being passed, it should be dereferencable
- * to a git_commit which oid will be used as the target of the branch.
+ * @param target Commit to which this branch should point. This object
+ * must belong to the given `repo`.
  *
  * @param force Overwrite existing branch.
  *
@@ -50,11 +48,11 @@ GIT_BEGIN_DECL
  * pointing to the provided target commit.
  */
 GIT_EXTERN(int) git_branch_create(
-		git_reference **out,
-		git_repository *repo,
-		const char *branch_name,
-		const git_commit *target,
-		int force);
+	git_reference **out,
+	git_repository *repo,
+	const char *branch_name,
+	const git_commit *target,
+	int force);
 
 /**
  * Delete an existing branch reference.
@@ -66,6 +64,11 @@ GIT_EXTERN(int) git_branch_create(
  * @return 0 on success, or an error code.
  */
 GIT_EXTERN(int) git_branch_delete(git_reference *branch);
+
+typedef int (*git_branch_foreach_cb)(
+	const char *branch_name,
+	git_branch_t branch_type,
+	void *payload);
 
 /**
  * Loop over all the branches and issue a callback for each one.
@@ -85,14 +88,10 @@ GIT_EXTERN(int) git_branch_delete(git_reference *branch);
  * @return 0 on success, GIT_EUSER on non-zero callback, or error code
  */
 GIT_EXTERN(int) git_branch_foreach(
-		git_repository *repo,
-		unsigned int list_flags,
-		int (*branch_cb)(
-			const char *branch_name,
-			git_branch_t branch_type,
-			void *payload),
-		void *payload
-);
+	git_repository *repo,
+	unsigned int list_flags,
+	git_branch_foreach_cb branch_cb,
+	void *payload);
 
 /**
  * Move/rename an existing local branch reference.
@@ -110,9 +109,10 @@ GIT_EXTERN(int) git_branch_foreach(
  * @return 0 on success, GIT_EINVALIDSPEC or an error code.
  */
 GIT_EXTERN(int) git_branch_move(
-		git_reference *branch,
-		const char *new_branch_name,
-		int force);
+	git_reference **out,
+	git_reference *branch,
+	const char *new_branch_name,
+	int force);
 
 /**
  * Lookup a branch by its name in a repository.
@@ -136,10 +136,10 @@ GIT_EXTERN(int) git_branch_move(
  * exists, GIT_EINVALIDSPEC, otherwise an error code.
  */
 GIT_EXTERN(int) git_branch_lookup(
-		git_reference **out,
-		git_repository *repo,
-		const char *branch_name,
-		git_branch_t branch_type);
+	git_reference **out,
+	git_repository *repo,
+	const char *branch_name,
+	git_branch_t branch_type);
 
 /**
  * Return the name of the given local or remote branch.
@@ -172,8 +172,8 @@ GIT_EXTERN(int) git_branch_name(const char **out,
  * reference exists, otherwise an error code.
  */
 GIT_EXTERN(int) git_branch_tracking(
-		git_reference **out,
-		git_reference *branch);
+	git_reference **out,
+	git_reference *branch);
 
 /**
  * Return the name of the reference supporting the remote tracking branch,
@@ -208,7 +208,7 @@ GIT_EXTERN(int) git_branch_tracking_name(
  * error code otherwise.
  */
 GIT_EXTERN(int) git_branch_is_head(
-		git_reference *branch);
+	git_reference *branch);
 
 /**
  * Return the name of remote that the remote tracking branch belongs to.
@@ -221,7 +221,7 @@ GIT_EXTERN(int) git_branch_is_head(
  *
  * @param repo The repository where the branch lives.
  *
- * @param branch The reference to the remote tracking branch.
+ * @param canonical_branch_name name of the remote tracking branch.
  *
  * @return Number of characters in the reference name
  *     including the trailing NUL byte; GIT_ENOTFOUND
@@ -233,7 +233,7 @@ GIT_EXTERN(int) git_branch_remote_name(
 	char *remote_name_out,
 	size_t buffer_size,
 	git_repository *repo,
-	git_reference *branch);
+	const char *canonical_branch_name);
 
 /** @} */
 GIT_END_DECL

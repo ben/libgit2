@@ -54,11 +54,11 @@ static int not_a_local_branch(const char *reference_name)
 }
 
 int git_branch_create(
-		git_reference **ref_out,
-		git_repository *repository,
-		const char *branch_name,
-		const git_commit *commit,
-		int force)
+	git_reference **ref_out,
+	git_repository *repository,
+	const char *branch_name,
+	const git_commit *commit,
+	int force)
 {
 	git_reference *branch = NULL;
 	git_buf canonical_branch_name = GIT_BUF_INIT;
@@ -124,10 +124,7 @@ on_error:
 }
 
 typedef struct {
-	int (*branch_cb)(
-			const char *branch_name,
-			git_branch_t branch_type,
-			void *payload);
+	git_branch_foreach_cb branch_cb;
 	void *callback_payload;
 	unsigned int branch_type;
 } branch_foreach_filter;
@@ -148,14 +145,10 @@ static int branch_foreach_cb(const char *branch_name, void *payload)
 }
 
 int git_branch_foreach(
-		git_repository *repo,
-		unsigned int list_flags,
-		int (*branch_cb)(
-			const char *branch_name,
-			git_branch_t branch_type,
-			void *payload),
-		void *payload
-)
+	git_repository *repo,
+	unsigned int list_flags,
+	git_branch_foreach_cb branch_cb,
+	void *payload)
 {
 	branch_foreach_filter filter;
 
@@ -167,6 +160,7 @@ int git_branch_foreach(
 }
 
 int git_branch_move(
+	git_reference **out,
 	git_reference *branch,
 	const char *new_branch_name,
 	int force)
@@ -181,28 +175,20 @@ int git_branch_move(
 	if (!git_reference_is_branch(branch))
 		return not_a_local_branch(git_reference_name(branch));
 
-	if ((error = git_buf_joinpath(&new_reference_name, GIT_REFS_HEADS_DIR, new_branch_name)) < 0)
-		goto cleanup;
+	if ((error = git_buf_joinpath(&new_reference_name, GIT_REFS_HEADS_DIR, new_branch_name)) < 0 ||
+		(error = git_buf_printf(&old_config_section, "branch.%s", git_reference_name(branch) + strlen(GIT_REFS_HEADS_DIR))) < 0 ||
+		(error = git_buf_printf(&new_config_section, "branch.%s", new_branch_name)) < 0)
+		goto done;
 
-	if (git_buf_printf(
-		&old_config_section,
-		"branch.%s",
-		git_reference_name(branch) + strlen(GIT_REFS_HEADS_DIR)) < 0)
-			goto cleanup;
-
-	if ((error = git_reference_rename(branch, git_buf_cstr(&new_reference_name), force)) < 0)
-		goto cleanup;
-
-	if (git_buf_printf(&new_config_section, "branch.%s", new_branch_name) < 0)
-		goto cleanup;
-
-	if ((error = git_config_rename_section(
-		git_reference_owner(branch), 
+	if ((error = git_config_rename_section(git_reference_owner(branch),
 		git_buf_cstr(&old_config_section),
 		git_buf_cstr(&new_config_section))) < 0)
-			goto cleanup;
+		goto done;
+	
+	if ((error = git_reference_rename(out, branch, git_buf_cstr(&new_reference_name), force)) < 0)
+		goto done;
 
-cleanup:
+done:
 	git_buf_free(&new_reference_name);
 	git_buf_free(&old_config_section);
 	git_buf_free(&new_config_section);
@@ -211,10 +197,10 @@ cleanup:
 }
 
 int git_branch_lookup(
-		git_reference **ref_out,
-		git_repository *repo,
-		const char *branch_name,
-		git_branch_t branch_type)
+	git_reference **ref_out,
+	git_repository *repo,
+	const char *branch_name,
+	git_branch_t branch_type)
 {
 	assert(ref_out && repo && branch_name);
 
@@ -323,7 +309,7 @@ int git_branch_remote_name(
 	char *remote_name_out,
 	size_t buffer_size,
 	git_repository *repo,
-	git_reference *branch)
+	const char *canonical_branch_name)
 {
 	git_strarray remote_list = {0};
 	size_t i, remote_name_size;
@@ -332,15 +318,15 @@ int git_branch_remote_name(
 	int error = 0;
 	char *remote_name = NULL;
 
-	assert(branch);
+	assert(repo && canonical_branch_name);
 
 	if (remote_name_out && buffer_size)
 		*remote_name_out = '\0';
 
 	/* Verify that this is a remote branch */
-	if (!git_reference_is_remote(branch)) {
-		giterr_set(GITERR_INVALID,
-				   "Reference '%s' is not a remote branch.", branch->name);
+	if (!git_reference__is_remote(canonical_branch_name)) {
+		giterr_set(GITERR_INVALID, "Reference '%s' is not a remote branch.",
+			canonical_branch_name);
 		error = GIT_ERROR;
 		goto cleanup;
 	}
@@ -358,7 +344,7 @@ int git_branch_remote_name(
 
 		/* Defensivly check that we have a fetchspec */
 		if (fetchspec &&
-			git_refspec_dst_matches(fetchspec, branch->name)) {
+			git_refspec_dst_matches(fetchspec, canonical_branch_name)) {
 			/* If we have not already set out yet, then set
 			 * it to the matching remote name. Otherwise
 			 * multiple remotes match this reference, and it

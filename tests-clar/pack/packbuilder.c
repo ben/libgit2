@@ -1,4 +1,6 @@
 #include "clar_libgit2.h"
+#include "fileops.h"
+#include "hash.h"
 #include "iterator.h"
 #include "vector.h"
 #include "posix.h"
@@ -6,7 +8,7 @@
 static git_repository *_repo;
 static git_revwalk *_revwalker;
 static git_packbuilder *_packbuilder;
-static git_indexer *_indexer;
+static git_indexer_stream *_indexer;
 static git_vector _commits;
 static int _commits_is_initialized;
 
@@ -38,7 +40,7 @@ void test_pack_packbuilder__cleanup(void)
 	git_revwalk_free(_revwalker);
 	_revwalker = NULL;
 
-	git_indexer_free(_indexer);
+	git_indexer_stream_free(_indexer);
 	_indexer = NULL;
 
 	cl_git_sandbox_cleanup();
@@ -73,16 +75,57 @@ static void seed_packbuilder(void)
 	}
 }
 
+static int feed_indexer(void *ptr, size_t len, void *payload)
+{
+	git_transfer_progress *stats = (git_transfer_progress *)payload;
+
+	return git_indexer_stream_add(_indexer, ptr, len, stats);
+}
+
 void test_pack_packbuilder__create_pack(void)
 {
 	git_transfer_progress stats;
+	git_buf buf = GIT_BUF_INIT, path = GIT_BUF_INIT;
+	git_hash_ctx ctx;
+	git_oid hash;
+	char hex[41]; hex[40] = '\0';
 
 	seed_packbuilder();
-	cl_git_pass(git_packbuilder_write(_packbuilder, "testpack.pack"));
 
-	cl_git_pass(git_indexer_new(&_indexer, "testpack.pack"));
-	cl_git_pass(git_indexer_run(_indexer, &stats));
-	cl_git_pass(git_indexer_write(_indexer));
+	cl_git_pass(git_indexer_stream_new(&_indexer, ".", NULL, NULL));
+	cl_git_pass(git_packbuilder_foreach(_packbuilder, feed_indexer, &stats));
+	cl_git_pass(git_indexer_stream_finalize(_indexer, &stats));
+
+	git_oid_fmt(hex, git_indexer_stream_hash(_indexer));
+	git_buf_printf(&path, "pack-%s.pack", hex);
+
+	/*
+	 * By default, packfiles are created with only one thread.
+	 * Therefore we can predict the object ordering and make sure
+	 * we create exactly the same pack as git.git does when *not*
+	 * reusing existing deltas (as libgit2).
+	 *
+	 * $ cd tests-clar/resources/testrepo.git
+	 * $ git rev-list --objects HEAD | \
+	 * 	git pack-objects -q --no-reuse-delta --threads=1 pack
+	 * $ sha1sum git-80e61eb315239ef3c53033e37fee43b744d57122.pack
+	 * 5d410bdf97cf896f9007681b92868471d636954b
+	 *
+	 */
+
+	cl_git_pass(git_futils_readbuffer(&buf, git_buf_cstr(&path)));
+
+	cl_git_pass(git_hash_ctx_init(&ctx));
+	cl_git_pass(git_hash_update(&ctx, buf.ptr, buf.size));
+	cl_git_pass(git_hash_final(&hash, &ctx));
+	git_hash_ctx_cleanup(&ctx);
+
+	git_buf_free(&path);
+	git_buf_free(&buf);
+
+	git_oid_fmt(hex, &hash);
+
+	cl_assert_equal_s(hex, "5d410bdf97cf896f9007681b92868471d636954b");
 }
 
 static git_transfer_progress stats;
