@@ -12,7 +12,7 @@
  * One blob in a commit that is being suspected
  */
 typedef struct git_blame__origin {
-	int refcnt;
+	git_refcount rc;
 	struct git_blame__origin *previous;
 	git_commit *commit;
 	git_blob *blob;

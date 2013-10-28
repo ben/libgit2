@@ -17,19 +17,26 @@
 static git_blame__origin *origin_incref(git_blame__origin *o)
 {
 	if (o)
-		o->refcnt++;
+		GIT_REFCOUNT_INC(&o->rc);
 	return o;
 }
 
+static void origin_free(git_refcount *rc);
+
 static void origin_decref(git_blame__origin *o)
 {
-	if (o && --o->refcnt <= 0) {
-		if (o->previous)
-			origin_decref(o->previous);
-		git_blob_free(o->blob);
-		git_commit_free(o->commit);
-		git__free(o);
-	}
+	if (o)
+		GIT_REFCOUNT_DEC(&o->rc, origin_free);
+}
+
+static void origin_free(git_refcount *rc)
+{
+	git_blame__origin *o = GIT_REFCOUNT_OWNER(rc);
+	if (o->previous)
+		origin_decref(o->previous);
+	git_blob_free(o->blob);
+	git_commit_free(o->commit);
+	git__free(o);
 }
 
 /* Given a commit and a path in it, create a new origin structure. */
@@ -41,7 +48,8 @@ static int make_origin(git_blame__origin **out, git_commit *commit, const char *
 	o = git__calloc(1, sizeof(*o) + strlen(path) + 1);
 	GITERR_CHECK_ALLOC(o);
 	o->commit = commit;
-	o->refcnt = 1;
+	GIT_REFCOUNT_INC(&o->rc);
+	GIT_REFCOUNT_OWN(&o->rc, o);
 	strcpy(o->path, path);
 
 	if (!(error = git_object_lookup_bypath((git_object**)&o->blob, (git_object*)commit,
