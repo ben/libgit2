@@ -1369,6 +1369,73 @@ void test_diff_workdir__untracked_with_bom(void)
 	git_diff_free(diff);
 }
 
+void test_diff_workdir__binary_file_deleted(void)
+{
+	int fd, i;
+	const char *content = "\xAB\xCD\xEF\x00\x01\x02";
+	git_tree *tree;
+	git_diff_options opts = GIT_DIFF_OPTIONS_INIT;
+	git_diff *diff = NULL;
+	git_patch *patch = NULL;
+	const git_diff_delta *delta;
+
+	g_repo = cl_git_sandbox_init("empty_standard_repo");
+	opts.flags = GIT_DIFF_INCLUDE_UNTRACKED | GIT_DIFF_SHOW_UNTRACKED_CONTENT;
+
+	/* Create binary file */
+	cl_assert((fd = p_open("empty_standard_repo/foo.bar", O_WRONLY|O_CREAT, 0664)) >= 0);
+	for (i=0; i<1000; i++)
+		cl_must_pass(p_write(fd, content, 6));
+	cl_must_pass(p_close(fd));
+
+	/* Make a commit */
+	{
+		git_signature *me;
+		git_index *idx;
+		git_oid treeid = {{0}}, commitid = {{0}};
+
+		cl_git_pass(git_repository_index(&idx, g_repo));
+		git_index_clear(idx);
+		cl_git_pass(git_index_add_bypath(idx, "foo.bar"));
+		cl_git_pass(git_index_write_tree(&treeid, idx));
+
+		cl_git_pass(git_signature_now(&me, "me", "me@example.com"));
+		cl_git_pass(git_tree_lookup(&tree, g_repo, &treeid));
+		cl_git_pass(git_commit_create(&commitid, g_repo, "HEAD", me, me,
+					"UTF-8", "Add binary file", tree, 0, NULL));
+
+		git_index_free(idx);
+		git_signature_free(me);
+	}
+
+	/* Change the binary file */
+	cl_git_append2file("empty_standard_repo/foo.bar", "\x01\x23\x45\x67");
+
+	/* Diff should show up as binary */
+	cl_git_pass(git_diff_tree_to_workdir(&diff, g_repo, tree, &opts));
+	cl_git_pass(git_patch_from_diff(&patch, diff, 0));
+	cl_assert((delta = git_patch_get_delta(patch)) != NULL);
+	cl_assert_equal_i(GIT_DELTA_MODIFIED, delta->status);
+	cl_assert_equal_s("foo.bar", delta->new_file.path);
+	cl_assert_equal_i(GIT_DIFF_FLAG_BINARY, delta->flags & GIT_DIFF_FLAG_BINARY);
+	git_patch_free(patch);
+	git_diff_free(diff);
+
+	/* Delete the binary file */
+	cl_must_pass(p_unlink("empty_standard_repo/foo.bar"));
+
+	/* Diff should show up as binary */
+	cl_git_pass(git_diff_tree_to_workdir(&diff, g_repo, tree, &opts));
+	cl_git_pass(git_patch_from_diff(&patch, diff, 0));
+	cl_assert((delta = git_patch_get_delta(patch)) != NULL);
+	cl_assert_equal_i(GIT_DELTA_DELETED, delta->status);
+	cl_assert_equal_s("foo.bar", delta->new_file.path);
+	cl_assert_equal_i(GIT_DIFF_FLAG_BINARY, delta->flags & GIT_DIFF_FLAG_BINARY);
+	git_patch_free(patch);
+	git_diff_free(diff);
+	git_tree_free(tree);
+}
+
 void test_diff_workdir__patience_diff(void)
 {
 	git_index *index;
